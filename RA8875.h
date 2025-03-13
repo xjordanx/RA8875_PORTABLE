@@ -24,6 +24,18 @@
 #ifndef RA8875_H_
 #define RA8875_H_ ///< File has been included
 
+#define RA_CS_PIN (0x01)
+#define ASSERT 1
+#define DEASSERT 0
+
+#ifndef HIGH
+#define HIGH 1
+#endif
+
+#ifndef LOW
+#define LOW  0
+#endif
+
 // Touchscreen Calibration and EEPROM Storage Defines
 #define CFG_EEPROM_TOUCHSCREEN_CAL_AN 0       ///< EEPROM Storage Location
 #define CFG_EEPROM_TOUCHSCREEN_CAL_BN 4       ///< EEPROM Storage Location
@@ -54,8 +66,8 @@ extern void delay(uint32_t count);
  */
 /**************************************************************************/
 typedef struct Point {
-  int32_t x;
-  int32_t y;
+  int x;
+  int y;
 } tsPoint_t; ///< Nameless struct variable!
 
 /**************************************************************************/
@@ -93,24 +105,25 @@ typedef enum RA8875_sizes {
 
 /**************************************************************************/
 /*!
- @brief  Class that stores state and functions for interacting with
+ @brief  Struct that stores state and functions for interacting with
  the RA8875 display controller.
  */
 /**************************************************************************/
 struct RA8875_instance {
-  uint8_t cs_pin, rst_pin;
+  unsigned char cs_pin_mask;
+  unsigned char rst_pin;
   tft_size_t size;
   uint16_t width, height;
-  uint8_t textScale;
-  uint8_t rotation;
-  uint8_t voffset;
+  unsigned char textScale;
+  unsigned char rotation;
+  unsigned char voffset;
 };
 
 // Member functions
 unsigned char RA8875_init(struct RA8875_instance *thistft,
-		tft_size_t size, uint8_t cs_pin, 
-		uint8_t rst_pin, uint8_t textScale,
-		uint8_t rotation, uint8_t voffset);
+		tft_size_t size, unsigned char cs_pin_mask,
+		unsigned char rst_pin_num, unsigned char textScale,
+		unsigned char rotation, unsigned char voffset);
 		
   void RA8875_softReset(struct RA8875_instance *thistft);
   void RA8875_displayOn(struct RA8875_instance *thistft, bool on);
@@ -121,9 +134,9 @@ unsigned char RA8875_init(struct RA8875_instance *thistft,
   void RA8875_textSetCursor(struct RA8875_instance *thistft, uint16_t x, uint16_t y);
   void RA8875_textColor(struct RA8875_instance *thistft, uint16_t foreColor, uint16_t bgColor);
   void RA8875_textTransparent(struct RA8875_instance *thistft, uint16_t foreColor);
-  void RA8875_textEnlarge(struct RA8875_instance *thistft, uint8_t scale);
+  void RA8875_textEnlarge(struct RA8875_instance *thistft, unsigned char scale);
   void RA8875_textWrite(struct RA8875_instance *thistft, const char *buffer, uint16_t len);
-  void RA8875_cursorBlink(struct RA8875_instance *thistft, uint8_t rate);
+  void RA8875_cursorBlink(struct RA8875_instance *thistft, unsigned char rate);
 
   /* Graphics functions */
   void RA8875_graphicsMode(struct RA8875_instance *thistft);
@@ -148,22 +161,22 @@ unsigned char RA8875_init(struct RA8875_instance *thistft,
   void RA8875_fillTriangle(struct RA8875_instance *thistft, int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2, uint16_t color);
   void RA8875_drawEllipse(struct RA8875_instance *thistft, int16_t xCenter, int16_t yCenter, int16_t longAxis, int16_t shortAxis, uint16_t color);
   void RA8875_fillEllipse(struct RA8875_instance *thistft, int16_t xCenter, int16_t yCenter, int16_t longAxis, int16_t shortAxis, uint16_t color);
-  void RA8875_drawCurve(struct RA8875_instance *thistft, int16_t xCenter, int16_t yCenter, int16_t longAxis, int16_t shortAxis, uint8_t curvePart, uint16_t color);
-  void RA8875_fillCurve(struct RA8875_instance *thistft, int16_t xCenter, int16_t yCenter, int16_t longAxis, int16_t shortAxis, uint8_t curvePart, uint16_t color);
+  void RA8875_drawCurve(struct RA8875_instance *thistft, int16_t xCenter, int16_t yCenter, int16_t longAxis, int16_t shortAxis, unsigned char curvePart, uint16_t color);
+  void RA8875_fillCurve(struct RA8875_instance *thistft, int16_t xCenter, int16_t yCenter, int16_t longAxis, int16_t shortAxis, unsigned char curvePart, uint16_t color);
   void RA8875_drawRoundRect(struct RA8875_instance *thistft, int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t color);
   void RA8875_fillRoundRect(struct RA8875_instance *thistft, int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t color);
 
   /* Scroll */
-  void RA8875_setScrollWindow(struct RA8875_instance *thistft, int16_t x, int16_t y, int16_t w, int16_t h, uint8_t mode);
+  void RA8875_setScrollWindow(struct RA8875_instance *thistft, int16_t x, int16_t y, int16_t w, int16_t h, unsigned char mode);
   void RA8875_scrollX(struct RA8875_instance *thistft, int16_t dist);
   void RA8875_scrollY(struct RA8875_instance *thistft, int16_t dist);
 
   /* Backlight */
   void RA8875_GPIOX_onoff(struct RA8875_instance *thistft, bool on);
-  void RA8875_PWM1config(struct RA8875_instance *thistft, bool on, uint8_t clock);
-  void RA8875_PWM2config(struct RA8875_instance *thistft, bool on, uint8_t clock);
-  void RA8875_PWM1out(struct RA8875_instance *thistft, uint8_t p);
-  void RA8875_PWM2out(struct RA8875_instance *thistft, uint8_t p);
+  void RA8875_PWM1config(struct RA8875_instance *thistft, bool on, unsigned char clock);
+  void RA8875_PWM2config(struct RA8875_instance *thistft, bool on, unsigned char clock);
+  void RA8875_PWM1out(struct RA8875_instance *thistft, unsigned char p);
+  void RA8875_PWM2out(struct RA8875_instance *thistft, unsigned char p);
 
   /* Touch screen */
   void RA8875_touchEnable(struct RA8875_instance *thistft, bool on);
@@ -180,13 +193,13 @@ unsigned char RA8875_init(struct RA8875_instance *thistft,
 #endif
 
   /* Low level access */
-  void 		RA8875_writeReg(struct RA8875_instance *thistft, uint8_t reg, uint8_t val);
-  uint8_t 	RA8875_readReg(struct RA8875_instance *thistft, uint8_t reg);
-  void 		RA8875_writeData(struct RA8875_instance *thistft, uint8_t d);
-  uint8_t 	RA8875_readData(struct RA8875_instance *thistft);
-  void 		RA8875_writeCommand(struct RA8875_instance *thistft, uint8_t d);
-  uint8_t 	RA8875_readStatus(struct RA8875_instance *thistft);
-  bool		RA8875_waitPoll(struct RA8875_instance *thistft, uint8_t r, uint8_t f);
+  void 		RA8875_writeReg(struct RA8875_instance *thistft, unsigned char reg, unsigned char val);
+  unsigned char 	RA8875_readReg(struct RA8875_instance *thistft, unsigned char reg);
+  void 		RA8875_writeData(struct RA8875_instance *thistft, unsigned char d);
+  unsigned char 	RA8875_readData(struct RA8875_instance *thistft);
+  void 		RA8875_writeCommand(struct RA8875_instance *thistft, unsigned char d);
+  unsigned char 	RA8875_readStatus(struct RA8875_instance *thistft);
+  bool		RA8875_waitPoll(struct RA8875_instance *thistft, unsigned char r, unsigned char f);
   uint16_t 	RA8875_width(struct RA8875_instance *thistft);
   uint16_t 	RA8875_height(struct RA8875_instance *thistft);
   void 		RA8875_setRotation(struct RA8875_instance *thistft, int8_t rotation);
@@ -200,7 +213,7 @@ unsigned char RA8875_init(struct RA8875_instance *thistft,
   void RA8875_rectHelper(struct RA8875_instance *thistft, int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color, bool filled);
   void RA8875_triangleHelper(struct RA8875_instance *thistft, int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2, uint16_t color, bool filled);
   void RA8875_ellipseHelper(struct RA8875_instance *thistft, int16_t xCenter, int16_t yCenter, int16_t longAxis, int16_t shortAxis, uint16_t color, bool filled);
-  void RA8875_curveHelper(struct RA8875_instance *thistft, int16_t xCenter, int16_t yCenter, int16_t longAxis, int16_t shortAxis, uint8_t curvePart, uint16_t color, bool filled);
+  void RA8875_curveHelper(struct RA8875_instance *thistft, int16_t xCenter, int16_t yCenter, int16_t longAxis, int16_t shortAxis, unsigned char curvePart, uint16_t color, bool filled);
   void RA8875_roundRectHelper(struct RA8875_instance *thistft, int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t color, bool filled);
 
   /* Rotation Functions */

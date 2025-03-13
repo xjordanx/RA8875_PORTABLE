@@ -34,80 +34,71 @@
  */
 #include <stdio.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include "RA8875.h"
-
-#ifndef HIGH
-#define HIGH 1
-#endif
-
-#ifndef LOW
-#define LOW 0
-#endif
+#include "ansi_codes.h"
+#include "spi_gpio_wrapper.h" // Wrapper for low-level system HAL and SPI driver.
 
 #if defined(EEPROM_SUPPORTED)
 #include <EEPROM.h>
 #endif
 
-#include "spi_gpio_wrapper.h" // Wrapper for low-level system HAL and SPI driver.
-
 #define spi_speed 3800000 // 3.8MHz
-
-// If the SPI library has transaction support, these functions
-// establish settings and protect from interference from other
-// libraries.  Otherwise, they simply do nothing.
-#ifdef SPI_HAS_TRANSACTION
-static inline void spi_begin(void) __attribute__((always_inline));
-static inline void spi_begin(void) {
-  // max speed!
-  SPI_beginTransaction(SPISettings(spi_speed, MSBFIRST, SPI_MODE0));
-}
-static inline void spi_end(void) __attribute__((always_inline));
-static inline void spi_end(void) { SPI_endTransaction(); }
-#else
-#define spi_begin() ///< Create dummy Macro Function
-#define spi_end()   ///< Create dummy Macro Function
-#endif
 
 /**************************************************************************/
 /*!
-      Initialises the LCD driver and any HW required by the display
+ Initialises the LCD driver and any HW required by the display
 
-      @param s The display size, which can be either:
-                  'RA8875_480x80'  (3.8" displays) or
-                  'RA8875_480x128' (3.9" displays) or
-                  'RA8875_480x272' (4.3" displays) or
-                  'RA8875_800x480' (5" and 7" displays)
+ @param thistft The tft "context":
+  struct RA8875_instance *thistft
+  First declare the instance and then pass it's address to this and other functions within this library.
 
-      @return True if we reached the end
-*/
+ @param size The display size, which can be either:
+ 'RA8875_480x80'  (3.8" displays) or
+ 'RA8875_480x128' (3.9" displays) or
+ 'RA8875_480x272' (4.3" displays) or
+ 'RA8875_800x480' (5" and 7" displays)
+
+ @param cs_pin_mask The 8-bit mask for the chosen chip-select pin.
+ @param rst_pin_num The GPIO pin number assigned to the TFT reset pin.
+ @param textScale Text font scale (0-3). Default 0.
+ @param voffset Vertical Offset. Default 0.
+ @param rotation The display rotation (0-3). Default 0.
+
+ @return True if we reached the end
+ */
 /**************************************************************************/
-unsigned char RA8875_init(struct RA8875_instance *thistft,
-			   tft_size_t size, uint8_t cs_pin, 
-			   uint8_t rst_pin, uint8_t textScale,
-			   uint8_t voffset, uint8_t rotation )
-{
-  if (size == RA8875_480x80) {
-    thistft->width = 480;
-    thistft->height = 80;
-  } else if (size == RA8875_480x128) {
-    thistft->width = 480;
-    thistft->height = 128;
-  } else if (size == RA8875_480x272) {
-    thistft->width = 480;
-    thistft->height = 272;
-  } else if (size == RA8875_800x480) {
-    thistft->width = 800;
-    thistft->height = 480;
-  } else {
-    return false;
-  }
-  thistft->size = size;
-  thistft->rotation = rotation;
-  thistft->cs_pin = cs_pin;
-  thistft->rst_pin = rst_pin;
-  thistft->textScale = textScale;
-  thistft->voffset = voffset;
-  thistft->rotation = rotation;
+unsigned char RA8875_init(	struct RA8875_instance *thistft,
+							tft_size_t size,
+							unsigned char cs_pin_mask,
+							unsigned char rst_pin_num,
+							unsigned char textScale,
+							unsigned char voffset,
+							unsigned char rotation ) {
+#if !defined(_STDIO_H) && !defined(_STDIO_H_)
+	char byteString[] = "0x00"; // Placeholder
+#endif
+	if (size == RA8875_480x80) {
+		thistft->width = 480;
+		thistft->height = 80;
+	} else if (size == RA8875_480x128) {
+		thistft->width = 480;
+		thistft->height = 128;
+	} else if (size == RA8875_480x272) {
+		thistft->width = 480;
+		thistft->height = 272;
+	} else if (size == RA8875_800x480) {
+		thistft->width = 800;
+		thistft->height = 480;
+	} else {
+		return false;
+	}
+	thistft->size = size;
+	thistft->rotation = rotation;
+	thistft->cs_pin_mask = cs_pin_mask;
+	thistft->rst_pin = rst_pin_num;
+	thistft->textScale = textScale;
+	thistft->voffset = voffset;
   
   SPI_CS(thistft->cs_pin, HIGH);
   digitalWrite(thistft->rst_pin, LOW);
@@ -116,25 +107,37 @@ unsigned char RA8875_init(struct RA8875_instance *thistft,
   delay(100);
   //SPI_begin();
 
-  uint8_t x = RA8875_readReg(thistft, 0);
+  unsigned char x = RA8875_readReg(thistft, 0);
   if (x != 0x75) {
+#if defined(_STDIO_H) || defined(_STDIO_H_)
 #ifdef ANSI_CODES_H
-    printf("\n%s calling RA8875_readReg(0) returned value %0x\n", ANSI_BOLD ANSI_FG_BRIGHT_RED "ERROR:", x);
+		printf("\n%s calling RA8875_readReg(0) returned value 0x%x\n", ANSI_BOLD ANSI_FG_BRIGHT_RED "ERROR:", x);
 #else
-	printf("ERROR: calling RA8875_readReg(0) returned value %0x\n", x);
+		printf( "ERROR: calling RA8875_readReg(0) returned value %0x\n", x );
 #endif
-    return false;
-  }
-  RA8875_initialize(thistft);
-  return true;
+#else
+		serial_print( "\nERROR: RA8875 read status " ) ;
+		unsigned charo_hexs( x, byteString );
+		serial_print( byteString );
+#endif
+		return false;
+	} else {
+		printf(ANSI_FG_BRIGHT_GREEN ANSI_BLINK "\nRA8875 "
+			   ANSI_RESET "initialized and status returned " ANSI_FG_RED "0x%x\n"
+			   ANSI_RESET, x);
+	}
+	RA8875_initialize( thistft );
+	return true;
 }
 
 /************************* Initialization *********************************/
 
 /**************************************************************************/
 /*!
-      Performs a SW-based reset of the RA8875
-*/
+ Performs a SW-based reset of the RA8875
+
+ @param *thistft The tft "context" (instance address).
+ */
 /**************************************************************************/
 void RA8875_softReset(struct RA8875_instance *thistft) {
   RA8875_writeCommand(thistft, RA8875_PWRR);
@@ -145,8 +148,10 @@ void RA8875_softReset(struct RA8875_instance *thistft) {
 
 /**************************************************************************/
 /*!
-      Initialise the PLL
-*/
+ Initialise the PLL
+
+ @param *thistft The tft "context" (instance address).
+ */
 /**************************************************************************/
 void RA8875_PLLinit(struct RA8875_instance *thistft) {
   if (	thistft->size == RA8875_480x80 ||
@@ -166,8 +171,10 @@ void RA8875_PLLinit(struct RA8875_instance *thistft) {
 
 /**************************************************************************/
 /*!
-      Initialises the driver IC (clock setup, etc.)
-*/
+ Initialises the driver IC (clock setup, etc.)
+
+ @param *thistft The tft "context" (instance address).
+ */
 /**************************************************************************/
 void RA8875_initialize(struct RA8875_instance *thistft) {
 	// RA8875_init must call this function to set size first.
@@ -175,12 +182,12 @@ void RA8875_initialize(struct RA8875_instance *thistft) {
   RA8875_writeReg(thistft, RA8875_SYSR, RA8875_SYSR_16BPP | RA8875_SYSR_MCU8);
 
   /* Timing values */
-  uint8_t pixclk;
-  uint8_t hsync_start;
-  uint8_t hsync_pw;
-  uint8_t hsync_finetune;
-  uint8_t hsync_nondisp;
-  uint8_t vsync_pw;
+  unsigned char pixclk;
+  unsigned char hsync_start;
+  unsigned char hsync_pw;
+  unsigned char hsync_finetune;
+  unsigned char hsync_nondisp;
+  unsigned char vsync_pw;
   uint16_t vsync_nondisp;
   uint16_t vsync_start;
 
@@ -266,312 +273,334 @@ void RA8875_initialize(struct RA8875_instance *thistft) {
 
 /**************************************************************************/
 /*!
-      Returns the display width in pixels
+ Returns the display width in pixels
 
-      @return  The 1-based display width in pixels
-*/
+ @param *thistft The tft "context" (instance address).
+
+ @return  The 1-based display width in pixels
+ */
 /**************************************************************************/
-uint16_t RA8875_width(struct RA8875_instance *thistft)
-	{ return thistft->width; }
+uint16_t RA8875_width( struct RA8875_instance *thistft ) {
+	return thistft->width;
+}
 
 /**************************************************************************/
 /*!
-      Returns the display height in pixels
+ Returns the display height in pixels
 
-      @return  The 1-based display height in pixels
-*/
+ @param *thistft The tft "context" (instance address).
+
+ @return  The 1-based display height in pixels
+ */
 /**************************************************************************/
-uint16_t RA8875_height(struct RA8875_instance *thistft)
-	{ return thistft->height; }
+uint16_t RA8875_height( struct RA8875_instance *thistft ) {
+	return thistft->height;
+}
 
 /**************************************************************************/
 /*!
  Returns the current rotation (0-3)
 
+ @param *thistft The tft "context" (instance address).
+
  @return  The Rotation Setting
  */
 /**************************************************************************/
-int8_t RA8875_getRotation(struct RA8875_instance *thistft)
-	{ return thistft->rotation; }
+char RA8875_getRotation( struct RA8875_instance *thistft ) {
+	return thistft->rotation;
+}
 
 /**************************************************************************/
 /*!
  Sets the current rotation (0-3)
 
- @param rotation The Rotation Setting
+ @param *thistft The tft "context" (instance address).
+ @param rotation The Rotation Setting (0-3, but in this library only 0 and 2 are supported. If you pass 1 or 3 it will default to 0.
  */
 /**************************************************************************/
-void RA8875_setRotation(struct RA8875_instance *thistft, int8_t rotation) {
-  switch (rotation) {
-  case 2:
-    thistft->rotation = rotation;
-    break;
-  default:
-    thistft->rotation = 0;
-    break;
-  }
+void RA8875_setRotation( struct RA8875_instance *thistft, char rotation ) {
+	switch (rotation) {
+	case 2:
+		thistft->rotation = rotation;
+		break;
+	default:
+		thistft->rotation = 0;
+		break;
+	}
 }
 
 /************************* Text Mode ***********************************/
 
 /**************************************************************************/
 /*!
-      Sets the display in text mode (as opposed to graphics mode)
-*/
-/**************************************************************************/
-void RA8875_textMode(struct RA8875_instance *thistft) {
-  /* Set text mode */
-  RA8875_writeCommand(thistft, RA8875_MWCR0);
-  uint8_t temp = RA8875_readData(thistft);
-  temp |= RA8875_MWCR0_TXTMODE; // Set bit 7
-  RA8875_writeData(thistft, temp);
+ Sets the display in text mode (as opposed to graphics mode)
 
-  /* Select the internal (ROM) font */
-  RA8875_writeCommand(thistft, 0x21);
-  temp = RA8875_readData(thistft);
-  temp &= ~((1 << 7) | (1 << 5)); // Clear bits 7 and 5
-  RA8875_writeData(thistft, temp);
+ @param *thistft The tft "context" (instance address).
+ */
+/**************************************************************************/
+void RA8875_textMode( struct RA8875_instance *thistft ) {
+	/* Set text mode */
+	RA8875_writeCommand( thistft, RA8875_MWCR0 );
+	unsigned char temp = RA8875_readData( thistft );
+	temp |= RA8875_MWCR0_TXTMODE; // Set bit 7
+	RA8875_writeData( thistft, temp );
+
+	/* Select the internal (ROM) font */
+	RA8875_writeCommand( thistft, 0x21 );
+	temp = RA8875_readData( thistft );
+	temp &= ~((1 << 7) | (1 << 5)); // Clear bits 7 and 5
+	RA8875_writeData( thistft, temp );
 }
 
 /**************************************************************************/
 /*!
-      Sets the display in text mode (as opposed to graphics mode)
+ Sets the display in text mode (as opposed to graphics mode)
 
-      @param x The x position of the cursor (in pixels, 0..1023)
-      @param y The y position of the cursor (in pixels, 0..511)
-*/
+ @param *thistft The tft "context" (instance address).
+ @param x The x position of the cursor (in pixels, 0..1023)
+ @param y The y position of the cursor (in pixels, 0..511)
+ */
 /**************************************************************************/
-void RA8875_textSetCursor(struct RA8875_instance *thistft,
-		uint16_t x, uint16_t y) {
-  x = RA8875_applyRotationX(thistft, x);
-  y = RA8875_applyRotationY(thistft, y);
+void RA8875_textSetCursor(	struct RA8875_instance *thistft,
+							uint16_t x,
+							uint16_t y ) {
+	x = RA8875_applyRotationX( thistft, x );
+	y = RA8875_applyRotationY( thistft, y );
 
-  /* Set cursor location */
-  RA8875_writeCommand(thistft, 0x2A);
-  RA8875_writeData(thistft, x & 0xFF);
-  RA8875_writeCommand(thistft, 0x2B);
-  RA8875_writeData(thistft, x >> 8);
-  RA8875_writeCommand(thistft, 0x2C);
-  RA8875_writeData(thistft, y & 0xFF);
-  RA8875_writeCommand(thistft, 0x2D);
-  RA8875_writeData(thistft, y >> 8);
+	/* Set cursor location */
+	RA8875_writeCommand( thistft, 0x2A );
+	RA8875_writeData( thistft, x & 0xFF );
+	RA8875_writeCommand( thistft, 0x2B );
+	RA8875_writeData( thistft, x >> 8 );
+	RA8875_writeCommand( thistft, 0x2C );
+	RA8875_writeData( thistft, y & 0xFF );
+	RA8875_writeCommand( thistft, 0x2D );
+	RA8875_writeData( thistft, y >> 8 );
 }
 
 /**************************************************************************/
 /*!
-      Sets the fore and background color when rendering text
+ Sets the fore and background color when rendering text
 
-      @param foreColor The RGB565 color to use when rendering the text
-      @param bgColor   The RGB565 colot to use for the background
-*/
+ @param *thistft The tft "context" (instance address).
+ @param foreColor The RGB565 color to use when rendering the text
+ @param bgColor   The RGB565 colot to use for the background
+ */
 /**************************************************************************/
-void RA8875_textColor(struct RA8875_instance *thistft,
-		uint16_t foreColor, uint16_t bgColor) {
-  /* Set Fore Color */
-  RA8875_writeCommand(thistft, 0x63);
-  RA8875_writeData(thistft, (foreColor & 0xf800) >> 11);
-  RA8875_writeCommand(thistft, 0x64);
-  RA8875_writeData(thistft, (foreColor & 0x07e0) >> 5);
-  RA8875_writeCommand(thistft, 0x65);
-  RA8875_writeData(thistft, (foreColor & 0x001f));
+void RA8875_textColor(	struct RA8875_instance *thistft,
+						uint16_t foreColor,
+						uint16_t bgColor ) {
+	/* Set Fore Color */
+	RA8875_writeCommand( thistft, 0x63 );
+	RA8875_writeData( thistft, (foreColor & 0xf800) >> 11 );
+	RA8875_writeCommand( thistft, 0x64 );
+	RA8875_writeData( thistft, (foreColor & 0x07e0) >> 5 );
+	RA8875_writeCommand( thistft, 0x65 );
+	RA8875_writeData( thistft, (foreColor & 0x001f) );
 
-  /* Set Background Color */
-  RA8875_writeCommand(thistft, 0x60);
-  RA8875_writeData(thistft, (bgColor & 0xf800) >> 11);
-  RA8875_writeCommand(thistft, 0x61);
-  RA8875_writeData(thistft, (bgColor & 0x07e0) >> 5);
-  RA8875_writeCommand(thistft, 0x62);
-  RA8875_writeData(thistft, (bgColor & 0x001f));
+	/* Set Background Color */
+	RA8875_writeCommand( thistft, 0x60 );
+	RA8875_writeData( thistft, (bgColor & 0xf800) >> 11 );
+	RA8875_writeCommand( thistft, 0x61 );
+	RA8875_writeData( thistft, (bgColor & 0x07e0) >> 5 );
+	RA8875_writeCommand( thistft, 0x62 );
+	RA8875_writeData( thistft, (bgColor & 0x001f) );
 
-  /* Clear transparency flag */
-  RA8875_writeCommand(thistft, 0x22);
-  uint8_t temp = RA8875_readData(thistft);
-  temp &= ~(1 << 6); // Clear bit 6
-  RA8875_writeData(thistft, temp);
+	/* Clear transparency flag */
+	RA8875_writeCommand( thistft, 0x22 );
+	unsigned char temp = RA8875_readData( thistft );
+	temp &= ~(1 << 6); // Clear bit 6
+	RA8875_writeData( thistft, temp );
 }
 
 /**************************************************************************/
 /*!
-      Sets the fore color when rendering text with a transparent bg
+ Sets the fore color when rendering text with a transparent bg
 
-      @param foreColor The RGB565 color to use when rendering the text
-*/
+ @param foreColor The RGB565 color to use when rendering the text
+ */
 /**************************************************************************/
-void RA8875_textTransparent(struct RA8875_instance *thistft,
-		uint16_t foreColor) {
-  /* Set Fore Color */
-  RA8875_writeCommand(thistft, 0x63);
-  RA8875_writeData(thistft, (foreColor & 0xf800) >> 11);
-  RA8875_writeCommand(thistft, 0x64);
-  RA8875_writeData(thistft, (foreColor & 0x07e0) >> 5);
-  RA8875_writeCommand(thistft, 0x65);
-  RA8875_writeData(thistft, (foreColor & 0x001f));
+void RA8875_textTransparent(	struct RA8875_instance *thistft,
+								uint16_t foreColor ) {
+	/* Set Fore Color */
+	RA8875_writeCommand( thistft, 0x63 );
+	RA8875_writeData( thistft, (foreColor & 0xf800) >> 11 );
+	RA8875_writeCommand( thistft, 0x64 );
+	RA8875_writeData( thistft, (foreColor & 0x07e0) >> 5 );
+	RA8875_writeCommand( thistft, 0x65 );
+	RA8875_writeData( thistft, (foreColor & 0x001f) );
 
-  /* Set transparency flag */
-  RA8875_writeCommand(thistft, 0x22);
-  uint8_t temp = RA8875_readData(thistft);
-  temp |= (1 << 6); // Set bit 6
-  RA8875_writeData(thistft, temp);
+	/* Set transparency flag */
+	RA8875_writeCommand( thistft, 0x22 );
+	unsigned char temp = RA8875_readData( thistft );
+	temp |= (1 << 6); // Set bit 6
+	RA8875_writeData( thistft, temp );
 }
 
 /**************************************************************************/
 /*!
-      Sets the text enlarge settings, using one of the following values:
+ Sets the text enlarge settings, using one of the following values:
 
-      0 = 1x zoom
-      1 = 2x zoom
-      2 = 3x zoom
-      3 = 4x zoom
+ 0 = 1x zoom
+ 1 = 2x zoom
+ 2 = 3x zoom
+ 3 = 4x zoom
 
-      @param scale   The zoom factor (0..3 for 1-4x zoom)
-*/
+ @param scale   The zoom factor (0..3 for 1-4x zoom)
+ */
 /**************************************************************************/
-void RA8875_textEnlarge(struct RA8875_instance *thistft, uint8_t scale) {
-  if (scale > 3)
-    scale = 3; // highest setting is 3
+void RA8875_textEnlarge( struct RA8875_instance *thistft, unsigned char scale ) {
+	if (scale > 3) scale = 3; // highest setting is 3
 
-  /* Set font size flags */
-  RA8875_writeCommand(thistft, 0x22);
-  uint8_t temp = RA8875_readData(thistft);
-  temp &= ~(0xF); // Clears bits 0..3
-  temp |= scale << 2;
-  temp |= scale;
+	/* Set font size flags */
+	RA8875_writeCommand( thistft, 0x22 );
+	unsigned char temp = RA8875_readData( thistft );
+	temp &= ~(0xF); // Clears bits 0..3
+	temp |= scale << 2;
+	temp |= scale;
 
-  RA8875_writeData(thistft, temp);
+	RA8875_writeData( thistft, temp );
 
-  thistft->textScale = scale;
+	thistft->textScale = scale;
 }
 
 /**************************************************************************/
 /*!
-     Enable Cursor Visibility and Blink
-     Here we set bits 6 and 5 in 40h
-     As well as the set the blink rate in 44h
-     The rate is 0 through max 255
-     the lower the number the faster it blinks (00h is 1 frame time,
-     FFh is 256 Frames time.
-     Blink Time (sec) = BTCR[44h]x(1/Frame_rate)
+ Enable Cursor Visibility and Blink
+ Here we set bits 6 and 5 in 40h
+ As well as the set the blink rate in 44h
+ The rate is 0 through max 255
+ the lower the number the faster it blinks (00h is 1 frame time,
+ FFh is 256 Frames time.
+ Blink Time (sec) = BTCR[44h]x(1/Frame_rate)
 
-     @param rate The frame rate to blink
+ @param *thistft The tft "context" (instance address).
+ @param rate The frame rate to blink
  */
 /**************************************************************************/
 
-void RA8875_cursorBlink(struct RA8875_instance *thistft,
-		uint8_t rate) {
+void RA8875_cursorBlink( struct RA8875_instance *thistft, unsigned char rate ) {
 
-  RA8875_writeCommand(thistft, RA8875_MWCR0);
-  uint8_t temp = RA8875_readData(thistft);
-  temp |= RA8875_MWCR0_CURSOR;
-  RA8875_writeData(thistft, temp);
+	RA8875_writeCommand( thistft, RA8875_MWCR0 );
+	unsigned char temp = RA8875_readData( thistft );
+	temp |= RA8875_MWCR0_CURSOR;
+	RA8875_writeData( thistft, temp );
 
-  RA8875_writeCommand(thistft, RA8875_MWCR0);
-  temp = RA8875_readData(thistft);
-  temp |= RA8875_MWCR0_BLINK;
-  RA8875_writeData(thistft, temp);
+	RA8875_writeCommand( thistft, RA8875_MWCR0 );
+	temp = RA8875_readData( thistft );
+	temp |= RA8875_MWCR0_BLINK;
+	RA8875_writeData( thistft, temp );
 
-  if (rate > 255)
-    rate = 255;
-  RA8875_writeCommand(thistft, RA8875_BTCR);
-  RA8875_writeData(thistft, rate);
+	if (rate > 255) rate = 255;
+	RA8875_writeCommand( thistft, RA8875_BTCR );
+	RA8875_writeData( thistft, rate );
 }
 
 /**************************************************************************/
 /*!
-      Renders some text on the screen when in text mode
+ Renders some text on the screen when in text mode
 
-      @param buffer    The buffer containing the characters to render
-      @param len       The size of the buffer in bytes
-*/
+ @param *thistft The tft "context" (instance address).
+ @param buffer    The buffer containing the characters to render
+ @param len       The size of the buffer in bytes
+ */
 /**************************************************************************/
-void RA8875_textWrite(struct RA8875_instance *thistft, const char *buffer, uint16_t len) {
-  RA8875_writeCommand(thistft, RA8875_MRWC);
-  for (uint16_t i = 0; i < len; i++) {
-    RA8875_writeData(thistft, buffer[i]);
-/// @cond DISABLE
+void RA8875_textWrite(	struct RA8875_instance *thistft,
+						const char *buffer,
+						uint16_t len ) {
+	RA8875_writeCommand( thistft, RA8875_MRWC );
+	for (uint16_t i = 0; i < len; i++) {
+		RA8875_writeData( thistft, buffer[i] );
+		/// @cond DISABLE
 #if defined(__arm__)
-    /// @endcond
-    // This delay is needed with textEnlarge(1) because
-    // Teensy 3.X is much faster than Arduino Uno
-    if (thistft->textScale > 0)
-      delay(1);
-/// @cond DISABLE
+		/// @endcond
+		// This delay is needed with textEnlarge(1) because
+		// Teensy 3.X is much faster than Arduino Uno
+		if (thistft->textScale > 0)
+			delay(1);
+		/// @cond DISABLE
 #else
-    /// @endcond
-    // For others, delay starting with textEnlarge(2)
-    if (thistft->textScale > 1)
-      delay(1);
-/// @cond DISABLE
+		/// @endcond
+		// For others, delay starting with textEnlarge(2)
+		if (thistft->textScale > 1) delay( 1 );
+		/// @cond DISABLE
 #endif
-    /// @endcond
-  }
+		/// @endcond
+	}
 }
 
 /************************* Graphics ***********************************/
 
 /**************************************************************************/
 /*!
-      Sets the display in graphics mode (as opposed to text mode)
-*/
+ Sets the display in graphics mode (as opposed to text mode)
+
+ @param *thistft The tft "context" (instance address).
+ */
 /**************************************************************************/
-void RA8875_graphicsMode(struct RA8875_instance *thistft) {
-  RA8875_writeCommand(thistft, RA8875_MWCR0);
-  uint8_t temp = RA8875_readData(thistft);
-  temp &= ~RA8875_MWCR0_TXTMODE; // bit #7
-  RA8875_writeData(thistft, temp);
+void RA8875_graphicsMode( struct RA8875_instance *thistft ) {
+	RA8875_writeCommand( thistft, RA8875_MWCR0 );
+	unsigned char temp = RA8875_readData( thistft );
+	temp &= ~RA8875_MWCR0_TXTMODE; // bit #7
+	RA8875_writeData( thistft, temp );
 }
 
 /**************************************************************************/
 /*!
-      Waits for screen to finish by polling the status!
+ Waits for screen to finish by polling the status!
 
-      @param regname The register name to check
-      @param waitflag The value to wait for the status register to match
+ @param *thistft The tft "context" (instance address).
+ @param regname The register name to check
+ @param waitflag The value to wait for the status register to match
 
-      @return True if the expected status has been reached
-*/
+ @return True if the expected status has been reached
+ */
 /**************************************************************************/
-bool RA8875_waitPoll(struct RA8875_instance *thistft,
-		uint8_t regname, uint8_t waitflag) {
-  /* Wait for the command to finish */
-  while (1) {
-    uint8_t temp = RA8875_readReg(thistft, regname);
-    if (!(temp & waitflag))
-      return true;
-  }
-  return false; // MEMEFIX: yeah i know, unreached! - add timeout?
+bool RA8875_waitPoll(	struct RA8875_instance *thistft,
+						unsigned char regname,
+						unsigned char waitflag ) {
+	/* Wait for the command to finish */
+	while (1) {
+		unsigned char temp = RA8875_readReg( thistft, regname );
+		if (!(temp & waitflag)) return true;
+	}
+	return false; // MEMEFIX: yeah i know, unreached! - add timeout?
 }
 
 /**************************************************************************/
 /*!
-      Sets the current X/Y position on the display before RA8875_drawing
+ Sets the current X/Y position on the display before RA8875_drawing
 
-      @param x The 0-based x location
-      @param y The 0-base y location
-*/
+ @param *thistft The tft "context" (instance address).
+ @param x The 0-based x location
+ @param y The 0-base y location
+ */
 /**************************************************************************/
-void RA8875_setXY(struct RA8875_instance *thistft,
-		uint16_t x, uint16_t y) {
-  RA8875_writeReg(thistft, RA8875_CURH0, x);
-  RA8875_writeReg(thistft, RA8875_CURH1, x >> 8);
-  RA8875_writeReg(thistft, RA8875_CURV0, y);
-  RA8875_writeReg(thistft, RA8875_CURV1, y >> 8);
+void RA8875_setXY( struct RA8875_instance *thistft, uint16_t x, uint16_t y ) {
+	RA8875_writeReg( thistft, RA8875_CURH0, x );
+	RA8875_writeReg( thistft, RA8875_CURH1, x >> 8 );
+	RA8875_writeReg( thistft, RA8875_CURV0, y );
+	RA8875_writeReg( thistft, RA8875_CURV1, y >> 8 );
 }
 
 /**************************************************************************/
 /*!
-      HW accelerated function to push a chunk of raw pixel data
+ HW accelerated function to push a chunk of raw pixel data
 
-      @param num The number of pixels to push
-      @param p   The pixel color to use
-*/
+ @param *thistft The tft "context" (instance address).
+ @param num The number of pixels to push
+ @param p   The pixel color to use
+ */
 /**************************************************************************/
 void RA8875_pushPixels(struct RA8875_instance *thistft,
 		uint32_t num, uint16_t p) {
+  unsigned char bytes[3];
   SPI_CS(thistft->cs_pin, LOW);
-  SPI_transfer(RA8875_DATAWRITE);
+  bytes[0] = (unsigned char)RA8875_DATAWRITE ;
+  bytes[1] = (unsigned char)(p >> 8) ;
+  bytes[2] = (unsigned char)p ;
   while (num--) {
-    SPI_transfer(p >> 8);
-    SPI_transfer(p);
+    SPI_send(bytes, 3);
   }
   SPI_CS(thistft->cs_pin, HIGH);
 }
@@ -669,7 +698,7 @@ void RA8875_drawPixels(struct RA8875_instance *thistft,
   RA8875_writeReg(thistft, RA8875_CURV0, y);
   RA8875_writeReg(thistft, RA8875_CURV1, y >> 8);
 
-  uint8_t dir = RA8875_MWCR0_LRTD;
+  unsigned char dir = RA8875_MWCR0_LRTD;
   if (thistft->rotation == 2) {
     dir = RA8875_MWCR0_RLTD;
   }
@@ -952,7 +981,7 @@ void RA8875_fillEllipse(struct RA8875_instance *thistft,
 void RA8875_drawCurve(struct RA8875_instance *thistft,
 		int16_t xCenter, int16_t yCenter,
         int16_t longAxis, int16_t shortAxis,
-         uint8_t curvePart, uint16_t color) {
+         unsigned char curvePart, uint16_t color) {
   RA8875_curveHelper(thistft, xCenter, yCenter, longAxis, shortAxis, curvePart, color, false);
 }
 
@@ -975,7 +1004,7 @@ void RA8875_drawCurve(struct RA8875_instance *thistft,
 void RA8875_fillCurve(struct RA8875_instance *thistft,
 		int16_t xCenter, int16_t yCenter,
         int16_t longAxis, int16_t shortAxis,
-        uint8_t curvePart, uint16_t color) {
+        unsigned char curvePart, uint16_t color) {
   RA8875_curveHelper(thistft, xCenter, yCenter, longAxis, shortAxis, curvePart, color, true);
 }
 
@@ -1245,7 +1274,7 @@ void RA8875_ellipseHelper(struct RA8875_instance *thistft,
 void RA8875_curveHelper(struct RA8875_instance *thistft,
 		int16_t xCenter, int16_t yCenter,
         int16_t longAxis, int16_t shortAxis,
-        uint8_t curvePart, uint16_t color,
+        unsigned char curvePart, uint16_t color,
         bool filled) {
   xCenter = RA8875_applyRotationX(thistft, xCenter);
   yCenter = RA8875_applyRotationY(thistft, yCenter);
@@ -1376,7 +1405,7 @@ void RA8875_roundRectHelper(struct RA8875_instance *thistft,
 /**************************************************************************/
 void RA8875_setScrollWindow(struct RA8875_instance *thistft,
 		int16_t x, int16_t y, int16_t w,
-        int16_t h, uint8_t mode) {
+        int16_t h, unsigned char mode) {
   // Horizontal Start point of Scroll Window
   RA8875_writeCommand(thistft, 0x38);
   RA8875_writeData(thistft, x);
@@ -1463,7 +1492,7 @@ void RA8875_GPIOX_onoff(struct RA8875_instance *thistft, bool on) {
     @param p The duty Cycle (0-255)
 */
 /**************************************************************************/
-void RA8875_PWM1out(struct RA8875_instance *thistft, uint8_t p)
+void RA8875_PWM1out(struct RA8875_instance *thistft, unsigned char p)
 { RA8875_writeReg(thistft, RA8875_P1DCR, p); }
 
 /**************************************************************************/
@@ -1473,7 +1502,7 @@ void RA8875_PWM1out(struct RA8875_instance *thistft, uint8_t p)
      @param p The duty Cycle (0-255)
 */
 /**************************************************************************/
-void RA8875_PWM2out(struct RA8875_instance *thistft, uint8_t p)
+void RA8875_PWM2out(struct RA8875_instance *thistft, unsigned char p)
 { RA8875_writeReg(thistft, RA8875_P2DCR, p); }
 
 /**************************************************************************/
@@ -1485,7 +1514,7 @@ void RA8875_PWM2out(struct RA8875_instance *thistft, uint8_t p)
 */
 /**************************************************************************/
 void RA8875_PWM1config( struct RA8875_instance *thistft,
-						bool on, uint8_t clock) {
+						bool on, unsigned char clock) {
   if (on) {
     RA8875_writeReg(thistft, RA8875_P1CR, RA8875_P1CR_ENABLE | (clock & 0xF));
   } else {
@@ -1502,7 +1531,7 @@ void RA8875_PWM1config( struct RA8875_instance *thistft,
 */
 /**************************************************************************/
 void RA8875_PWM2config(	struct RA8875_instance *thistft,
-						bool on, uint8_t clock) {
+						bool on, unsigned char clock) {
   if (on) {
     RA8875_writeReg(thistft, RA8875_P2CR, RA8875_P2CR_ENABLE | (clock & 0xF));
   } else {
@@ -1518,10 +1547,10 @@ void RA8875_PWM2config(	struct RA8875_instance *thistft,
 */
 /**************************************************************************/
 void RA8875_touchEnable( struct RA8875_instance *thistft, bool on) {
-  uint8_t adcClk = (uint8_t)RA8875_TPCR0_ADCCLK_DIV4;
+  unsigned char adcClk = (unsigned char)RA8875_TPCR0_ADCCLK_DIV4;
 
   if (thistft->size == RA8875_800x480) // match up touch size with LCD size
-    adcClk = (uint8_t)RA8875_TPCR0_ADCCLK_DIV16;
+    adcClk = (unsigned char)RA8875_TPCR0_ADCCLK_DIV16;
 
   if (on) {
     /* Enable Touch Panel (Reg 0x70) */
@@ -1571,7 +1600,7 @@ bool RA8875_touched(struct RA8875_instance *thistft) {
 bool RA8875_touchRead(struct RA8875_instance *thistft,
 						 uint16_t *x, uint16_t *y) {
   uint16_t tx, ty;
-  uint8_t temp;
+  unsigned char temp;
 
   tx = RA8875_readReg(thistft, RA8875_TPXH);
   ty = RA8875_readReg(thistft, RA8875_TPYH);
@@ -1628,7 +1657,7 @@ void RA8875_sleep(struct RA8875_instance *thistft, bool sleep) {
     @param val Value to write
 */
 /**************************************************************************/
-void RA8875_writeReg(struct RA8875_instance *thistft, uint8_t reg, uint8_t val) {
+void RA8875_writeReg(struct RA8875_instance *thistft, unsigned char reg, unsigned char val) {
   RA8875_writeCommand(thistft, reg);
   RA8875_writeData(thistft, val);
 }
@@ -1642,7 +1671,7 @@ void RA8875_writeReg(struct RA8875_instance *thistft, uint8_t reg, uint8_t val) 
     @return The value
 */
 /**************************************************************************/
-uint8_t RA8875_readReg(struct RA8875_instance *thistft, uint8_t reg) {
+unsigned char RA8875_readReg(struct RA8875_instance *thistft, unsigned char reg) {
   RA8875_writeCommand(thistft, reg);
   return RA8875_readData(thistft);
 }
@@ -1654,7 +1683,7 @@ uint8_t RA8875_readReg(struct RA8875_instance *thistft, uint8_t reg) {
     @param d Data to write
 */
 /**************************************************************************/
-void RA8875_writeData(struct RA8875_instance *thistft, uint8_t d) {
+void RA8875_writeData(struct RA8875_instance *thistft, unsigned char d) {
 	SPI_CS(thistft->cs_pin, LOW);
 
 	SPI_transfer(RA8875_DATAWRITE);
@@ -1669,10 +1698,10 @@ void RA8875_writeData(struct RA8875_instance *thistft, uint8_t d) {
     @return The Value
 */
 /**************************************************************************/
-uint8_t RA8875_readData(struct RA8875_instance *thistft) {
+unsigned char RA8875_readData(struct RA8875_instance *thistft) {
 	SPI_CS(thistft->cs_pin, LOW);
 	SPI_transfer(RA8875_DATAREAD);
-	uint8_t x = SPI_transfer(0x0);
+	unsigned char x = SPI_transfer(0x0);
 	SPI_CS(thistft->cs_pin, HIGH);
 	return x;
 }
@@ -1684,7 +1713,7 @@ uint8_t RA8875_readData(struct RA8875_instance *thistft) {
     @param d The data to write as a command
  */
 /**************************************************************************/
-void RA8875_writeCommand(struct RA8875_instance *thistft, uint8_t d) {
+void RA8875_writeCommand(struct RA8875_instance *thistft, unsigned char d) {
 	SPI_CS(thistft->cs_pin, LOW);
 	SPI_transfer(RA8875_CMDWRITE);
 	SPI_transfer(d);
@@ -1698,10 +1727,10 @@ void RA8875_writeCommand(struct RA8875_instance *thistft, uint8_t d) {
     @return The value
  */
 /**************************************************************************/
-uint8_t RA8875_readStatus(struct RA8875_instance *thistft) {
+unsigned char RA8875_readStatus(struct RA8875_instance *thistft) {
 	SPI_CS(thistft->cs_pin, LOW);
 	SPI_transfer(RA8875_CMDREAD);
-	uint8_t x = SPI_transfer(0x0);
+	unsigned char x = SPI_transfer(0x0);
 	SPI_CS(thistft->cs_pin, HIGH);
 	return x;
 }
